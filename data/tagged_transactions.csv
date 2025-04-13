@@ -1,0 +1,13 @@
+TransactionID,Company,Counterparty,AccountType,Amount,Description,Is_Internal
+TXN001,A,X,Revenue,600000,External sale by A,False
+TXN002,A,X,Expense,-200000,External expense A,False
+TXN003,B,Y,Revenue,500000,External sale by B,False
+TXN004,B,Y,Expense,-250000,External expense B,False
+TXN005,C,Z,Revenue,300000,External sale by C,False
+TXN006,C,Z,Expense,-150000,External expense C,False
+TXN007,A,B,Revenue,70000,Internal sale A → B,True
+TXN008,B,A,Expense,-70000,Internal purchase B ← A,True
+TXN009,C,A,Revenue,30000,Internal sale C → A,True
+TXN010,A,C,Expense,-30000,Internal purchase A ← C,True
+TXN011,B,C,Revenue,50000,Internal sale B → C,True
+TXN012,C,B,Expense,-50000,Internal purchase C ← B,True
