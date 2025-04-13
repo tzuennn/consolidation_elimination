@@ -16,16 +16,24 @@ def tag_internal_transactions(df, group_companies):
 def check_internal_mismatches(df):
     internal_df = df[df['Is_Internal']].copy()
 
-    # Create a normalized key: (A, B) is same as (B, A)
-    internal_df['Key'] = internal_df.apply(
-        lambda row: f"{min(row['Company'], row['Counterparty'])}|{max(row['Company'], row['Counterparty'])}|{row['AccountType']}",
-        axis=1
+    # Normalize entity pairs regardless of direction
+    internal_df['EntityPair'] = internal_df.apply(
+        lambda row: '|'.join(sorted([row['Company'], row['Counterparty']])), axis=1
     )
-    # Group by Key and check for mismatches
-    grouped = internal_df.groupby('Key')['Amount'].sum().reset_index()
-    mismatches = grouped[grouped['Amount'].abs() > 1e-2]  # Allow tiny float errors
 
-    return mismatches
+    # Group by pair and account type
+    summary = (
+        internal_df.groupby(['EntityPair', 'AccountType'])['Amount']
+        .sum()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    # Compute net: Revenue + Expense (since Expense is negative)
+    summary['Net_Internal'] = summary.get('Revenue', 0) + summary.get('Expense', 0)
+    mismatches = summary[summary['Net_Internal'].abs() > 1e-2]
+
+    return mismatches[['EntityPair', 'Revenue', 'Expense', 'Net_Internal']]
 
 def compute_consolidated(df):
     external_df = df[~df['Is_Internal']]
@@ -38,28 +46,42 @@ def main():
     transactions_csv = 'data/transactions.csv'
     group_config_txt = 'config/group_companies.txt'
 
-    df, group_companies = load_data(transactions_csv, group_config_txt)
+    try:
+        df, group_companies = load_data(transactions_csv, group_config_txt)
+    except FileNotFoundError as e:
+        print(f"❌ File not found: {e}")
+        return
+
+    # Check columns
+    required_columns = {'Company', 'Counterparty', 'AccountType', 'Amount'}
+    if not required_columns.issubset(df.columns):
+        missing = required_columns - set(df.columns)
+        print(f"Missing required columns in CSV: {missing}")
+        return
+
     df = tag_internal_transactions(df, group_companies)
 
+    # Step 1: Check for internal mismatches
     mismatches = check_internal_mismatches(df)
     if not mismatches.empty:
-        print("\n⚠️ Internal Transaction Mismatches Detected:")
+        print("\nInternal Transaction Mismatches Detected — Consolidation aborted:")
         print(mismatches.to_string(index=False))
-        print("❗ These should be reviewed and adjusted before consolidation.\n")
+        print("❗ Please review and resolve these issues before proceeding.\n")
+        return
     else:
         print("\n✅ All internal transactions are matched correctly.")
 
+    # Step 2: Compute consolidated financials
     revenue, expense, profit = compute_consolidated(df)
-
     print("\n✅ Consolidated Financial Summary:")
     print(f"  - Revenue: {revenue:,.0f}")
     print(f"  - Expense: {expense:,.0f}")
     print(f"  - Net Profit: {profit:,.0f}")
 
-    # Optional: save tagged version for audit
+    # Step 3: Save tagged file
     output_file = 'data/tagged_transactions.csv'
     df.to_csv(output_file, index=False)
-    print(f"\n Tagged transactions saved to: {output_file}")
+    print(f"\n📁 Tagged transactions saved to: {output_file}")
 
 if __name__ == "__main__":
     main()
